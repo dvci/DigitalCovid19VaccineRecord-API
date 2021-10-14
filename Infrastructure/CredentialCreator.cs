@@ -2,6 +2,7 @@
 using Application.Common.Interfaces;
 using Application.Options;
 using Application.VaccineCredential.Queries.GetVaccineCredential;
+using Hl7.Fhir.Model;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -33,30 +34,31 @@ namespace Infrastructure
 
         public GoogleWallet GetGoogleCredential(Vci cred, string shc)
         {
+            var p = (Patient)cred.vc.credentialSubject.fhirBundle.Entry[0].Resource;
             var patientDetail = new PatientDetails()
             {
-                dateOfBirth = cred.vc.credentialSubject.fhirBundle.entry[0].resource.birthDate,
+                dateOfBirth = p.BirthDate,
                 identityAssuranceLevel = "IAL1.4",
-                patientName = $"{ cred.vc.credentialSubject.fhirBundle.entry[0].resource.name[0].given[0]} {cred.vc.credentialSubject.fhirBundle.entry[0].resource.name[0].family}"
+                patientName = $"{ p.Name[0].GivenElement[0].Value} {p.Name[0].Family}"
             };
 
             var vaccinationRecords = new List<VaccinationRecord>();
 
 
-            for (int inx = 1; inx < cred.vc.credentialSubject.fhirBundle.entry.Count; inx++)
+            for (int inx = 1; inx < cred.vc.credentialSubject.fhirBundle.Entry.Count; inx++)
             {
-                var dose = cred.vc.credentialSubject.fhirBundle.entry[inx];
-                var lotNumber = dose.resource.lotNumber;
+                var dose = (Immunization)cred.vc.credentialSubject.fhirBundle.Entry[inx].Resource;
+                var lotNumber = dose.LotNumber;
                 if (string.IsNullOrWhiteSpace(lotNumber)) { lotNumber = null; }
 
                 var vaccinationRecord = new VaccinationRecord()
                 {
-                    code = dose.resource.vaccineCode.coding[0].code.ToString(),
-                    doseDateTime = dose.resource.occurrenceDateTime,
+                    code = dose.VaccineCode.Coding[0].Code,
+                    doseDateTime = dose.Occurrence.ToString(),
                     doseLabel = "Dose",
                     lotNumber = lotNumber,
-                    manufacturer = Utils.VaccineTypeNames.GetValueOrDefault(dose.resource.vaccineCode.coding[0].code.ToString()),
-                    description = Utils.VaccineTypeNames.GetValueOrDefault(dose.resource.vaccineCode.coding[0].code.ToString())
+                    manufacturer = Utils.VaccineTypeNames.GetValueOrDefault(dose.VaccineCode.Coding[0].Code),
+                    description = Utils.VaccineTypeNames.GetValueOrDefault(dose.VaccineCode.Coding[0].Code)
                 };
 
                 vaccinationRecords.Add(vaccinationRecord);

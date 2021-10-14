@@ -16,6 +16,7 @@ using System.Diagnostics;
 using Application.Common;
 using System.Web;
 using System.Security;
+using Hl7.Fhir.Model;
 
 namespace Application.VaccineCredential.Queries.GetVaccineCredential
 {
@@ -119,42 +120,43 @@ namespace Application.VaccineCredential.Queries.GetVaccineCredential
                     Vci cred = _credCreator.GetCredential(responseVc);
 
                     //make sure cred only has at most 5 doses. (fhirBundle index starts at 0)
-                    if(cred.vc.credentialSubject.fhirBundle.entry.Count > NUMBER_OF_DOSES + 1)
+                    if(cred.vc.credentialSubject.fhirBundle.Entry.Count > NUMBER_OF_DOSES + 1)
                     {
-                        var cntRemove = cred.vc.credentialSubject.fhirBundle.entry.Count - (NUMBER_OF_DOSES + 1);
-                        cred.vc.credentialSubject.fhirBundle.entry.RemoveRange(1, cntRemove);
+                        var cntRemove = cred.vc.credentialSubject.fhirBundle.Entry.Count - (NUMBER_OF_DOSES + 1);
+                        cred.vc.credentialSubject.fhirBundle.Entry.RemoveRange(1, cntRemove);
                     }
 
+                    var p = (Patient)(cred.vc.credentialSubject.fhirBundle.Entry[0].Resource);
                     var dob = "";
-                    if (DateTime.TryParse(cred.vc.credentialSubject.fhirBundle.entry[0].resource.birthDate, out DateTime dateOfBirth))
+                    if (DateTime.TryParse(p.BirthDate, out DateTime dateOfBirth))
                     {
                         dob = dateOfBirth.ToString("MM/dd/yyyy");
                     }
 
                     var doses = new List<Dose>();
-                    for (int ix = 1; ix < cred.vc.credentialSubject.fhirBundle.entry.Count; ix++)
+                    for (int ix = 1; ix < cred.vc.credentialSubject.fhirBundle.Entry.Count; ix++)
                         {
-                        var d = cred.vc.credentialSubject.fhirBundle.entry[ix];
+                        var d = (Immunization)cred.vc.credentialSubject.fhirBundle.Entry[ix].Resource;
                         var doa = "";
-                        if (DateTime.TryParse(d.resource.occurrenceDateTime, out var d2))
+                        if (DateTime.TryParse(d.Occurrence.ToString(), out var d2))
                         {
                             doa = d2.ToString("MM/dd/yyyy");
                         }
-                        d.resource.lotNumber = Utils.TrimString(Utils.ParseLotNumber(d.resource.lotNumber), 20);
-                        d.resource.performer = null; //Remove performer
+                        d.LotNumber = Utils.TrimString(Utils.ParseLotNumber(d.LotNumber), 20);
+                        d.Performer = null; //Remove performer
                         // Provider set to null U11106
                         var dose = new Dose
                         {
                             Doa = doa,
-                            LotNumber = d.resource.lotNumber,
+                            LotNumber = d.LotNumber,
                             Provider = null,
-                            Type = Utils.VaccineTypeNames[d.resource.vaccineCode.coding[0].code]
+                            Type = Utils.VaccineTypeNames[d.VaccineCode.Coding[0].Code]
                         };
                         doses.Add(dose);
                     }
-                    var firstName = cred.vc.credentialSubject.fhirBundle.entry[0].resource.name[0].given[0];
+                    var firstName = p.Name[0].GivenElement[0].Value;
 
-                    var lastName = cred.vc.credentialSubject.fhirBundle.entry[0].resource.name[0].family;
+                    var lastName = p.Name[0].Family;
 
                     var jsonVaccineCredential = JsonConvert.SerializeObject(cred, Formatting.None, new JsonSerializerSettings
                     {
