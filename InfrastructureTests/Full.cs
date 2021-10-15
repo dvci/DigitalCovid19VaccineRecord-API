@@ -2,6 +2,7 @@
 using Application.Common.Interfaces;
 using Application.Options;
 using Application.VaccineCredential.Queries.GetVaccineCredential;
+using Hl7.Fhir.Model;
 using Infrastructure;
 using Infrastructure.QrApi;
 using Microsoft.Extensions.Logging;
@@ -25,7 +26,7 @@ using Xunit.Abstractions;
 namespace InfrastructureTests
 {
     public class Full
-    {  
+    {
         private static int totalCountRSAFailed = 0;
         private static int totalCounts = 0;
         private string shc0 = "shc:/567629095243206034602924374044603122295953265460346029254077280433602870286471674522280928613331456437653141590640220306450459085643550341424541364037063665417137241236380304375622046737407532323925433443326057360106452931611232742528435076726076394532075930645227370362275872247532202655562409710705372708277137253326005650540906446262305277446241053377100057320975270327272221033230440575680967664540582338673426407065367574665767210333756668242474446674340335032865533769377142105673765043716766214536575428093936605523007207040955597540355931687203124534397300383843730666632308425755602010702241322056435531385729060535042463716536445535603428393065581052703803241150697255432600363336266165073122000574573158732529360766537477377762106658272260612438566135624223206456126554042245092645112157302010710874096375393324426405282105115552403132457577046128081050343627656954631021443072335440506704327721305333052941600441397410284077106637311073080027572532546203753776433177745943122070635528341006765722546906055905771143603022560663095523332326455500652270723362680969083811743221413307293953052645535440322507687627443426332275717711532929254352586708605435565206712633236374775326666866323563710761560824680054232843705737762577651272106435396632037175111127274038376668606266033565055610290906366703505453432108691270703365110974534373312336127570017570607325667644623304611244747152623737397238074308127565687559454259215660660426265577694363365810043027074423333425416863110800655269352558343661455053057060737473543920";
@@ -54,9 +55,9 @@ namespace InfrastructureTests
             _keySettings.Issuer = "https://myvaccinerecord.cdph.ca.gov/creds";
             _jwt = new JwtSign(_b64, _keySettings);
             _compact = new Compact();
-             _output = output;
+            _output = output;
 
-       }
+        }
 
         [Fact]
         public void ShouldTransformJsonToShc()
@@ -74,7 +75,7 @@ namespace InfrastructureTests
             // 4. Chunk
             var split = _chunk.Chunk(testJwt);
             var shc0Combined = _chunk.Combine(new List<string> { shc0 });
-  
+
             var splitCombined = _chunk.Combine(split);
             var verified = VerifyJwt(splitCombined);
             Assert.True(verified);
@@ -112,8 +113,8 @@ namespace InfrastructureTests
             var signer = new ECDsaSigner();
 
             signer.Init(false, publicKey);
-            var r = new BigInteger(1,signature, 0, signature.Length / 2);
-            var s = new BigInteger(1,signature, signature.Length / 2, signature.Length / 2);
+            var r = new BigInteger(1, signature, 0, signature.Length / 2);
+            var s = new BigInteger(1, signature, signature.Length / 2, signature.Length / 2);
             var bis = signer.VerifySignature(data, r, s);
             return bis;
         }
@@ -192,58 +193,46 @@ namespace InfrastructureTests
         [InlineData(15, 0, 9)]
         [InlineData(16, 0, 9)]
         [InlineData(17, 0, 9)]
-        public async Task GeneralTest(int numDoses, int orgNameSize, int lotNumberSize=20)
+        public async System.Threading.Tasks.Task GeneralTest(int numDoses, int orgNameSize, int lotNumberSize = 20)
         {
-            var credCreator = new CredentialCreator(_keySettings,_jwt);
- 
-            var entries = new List<Entry>();
-            var name = new Name
+            var credCreator = new CredentialCreator(_keySettings, _jwt);
+
+            var fhirBundle = new Bundle
             {
-                family = "Lastname "+ RandomString(42),//42
-                given = new string[] { "FirstName" + RandomString(33) }.ToList()             //33
-            };
-            var names = new List<Name>();
-            names.Add(name);
-            var patientEntry = new Entry
-            {
-                fullUrl = "resource:0",
-                resource = new Resource
-                {
-                    birthDate = "1955-10-01",
-                    name = names,
-                    resourceType = "Patient"                                        
-                },
+                Type = Bundle.BundleType.Collection
             };
 
-            entries.Add(patientEntry);
+            var patient = new Patient();
+            patient.Name.Add(new HumanName()
+                .WithGiven("FirstName")
+                .WithGiven(RandomString(33))
+                .AndFamily("Lastname " + RandomString(42)));
+            patient.BirthDate = "1955-10-01";
+            fhirBundle.AddResourceEntry(patient, "resource:0");
 
 
-            for(int i = 1; i <= numDoses; i++)
+            for (int i = 1; i <= numDoses; i++)
             {
-                var dose = new Entry
-                {
-                    fullUrl = "resource:" + i,
-                    resource = new Resource
-                    {
-                        lotNumber = "E" + RandomString(lotNumberSize-1),
-                        resourceType = "Immunization",
-                        status = "completed",
-                        patient = new Patient
-                        {
-                            reference = "resource:0"
-                        },
-                        vaccineCode = new VaccineCode { coding = new List<Coding>() },
-                        occurrenceDateTime = $"2021-03-0{i.ToString().Substring(0,1)}",
-                        performer = orgNameSize <= 0 ? null : new List<Performer>()
-                    }
+                var dose = new Immunization{
+                    Occurrence = new Hl7.Fhir.Model.Date($"2021-03-0{i.ToString().Substring(0, 1)}"),
+                    Performer = orgNameSize <= 0 ? null : new List<Immunization.PerformerComponent>(),
+                    LotNumber = "E" + RandomString(lotNumberSize - 1),
+                    Status = Immunization.ImmunizationStatusCodes.Completed
                 };
+                dose.Patient = new ResourceReference()
+                {
+                    Reference = "resource:0"
+                };
+
                 if (orgNameSize > 0)
                 {
-                    dose.resource.performer.Add(new Performer() { actor = new Actor { display = $"ORG-{RandomString(orgNameSize - 4)}" } });
+                    dose.Performer.Add(new Immunization.PerformerComponent() { 
+                        Actor = new ResourceReference { Display = $"ORG-{RandomString(orgNameSize - 4)}" } 
+                    });
                 }
-                var code = new Coding { code = "208", system = "http://hl7.org/fhir/sid/cvx" };
-                dose.resource.vaccineCode.coding.Add(code);
-                entries.Add(dose);
+                dose.VaccineCode = new CodeableConcept();
+                dose.VaccineCode.Coding.Add(new Coding { Code = "208", System = "http://hl7.org/fhir/sid/cvx" });
+                fhirBundle.AddResourceEntry(dose, "resource:" + i);
             }
 
             var vc = new Vc
@@ -252,12 +241,7 @@ namespace InfrastructureTests
                 credentialSubject = new CredentialSubject
                 {
                     fhirVersion = "4.0.1",
-                    fhirBundle = new FhirBundle
-                    {
-                        type = "collection",
-                        resourceType = "Bundle",
-                        entry = entries
-                    }
+                    fhirBundle = fhirBundle
                 }
             };
             var cred = credCreator.GetCredential(vc);
@@ -303,7 +287,7 @@ namespace InfrastructureTests
                 System.IO.File.WriteAllBytes($"c:\\temp\\qrcodes\\QRCode_{numDoses}_{orgNameSize}.png", pngQr);
             }
             catch (Exception) { }
-            
+
             var combined = (new JwtChunk()).Combine(shcs);
 
             Assert.Equal(
@@ -321,7 +305,7 @@ namespace InfrastructureTests
             var signature = signer.GenerateSignature();
             return signature;
         }
-        
+
         public bool VerifySignature1(byte[] signature, byte[] message, AsymmetricKeyParameter publicKey)
         {
 
@@ -352,8 +336,8 @@ namespace InfrastructureTests
             var verifier = new ECDsaSigner();
             verifier.Init(false, publicKey);
             BigInteger r = new BigInteger(1, signature, 0, signature.Length / 2);
-            BigInteger s = new BigInteger(1, signature, signature.Length / 2, signature.Length /2);
-            return verifier.VerifySignature(message,r,s);
+            BigInteger s = new BigInteger(1, signature, signature.Length / 2, signature.Length / 2);
+            return verifier.VerifySignature(message, r, s);
         }
 
         private AsymmetricCipherKeyPair GetKeyPair(string privateKeyString, string certString)
@@ -371,7 +355,7 @@ namespace InfrastructureTests
             {
                 // Only a private key
                 Org.BouncyCastle.X509.X509Certificate bcCertificate = (X509Certificate)new PemReader(textReader).ReadObject();
-                
+
                 publicKey = bcCertificate.GetPublicKey();
             }
 
@@ -385,10 +369,10 @@ namespace InfrastructureTests
             const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";// .'-,";// ! 23~`'\":;<,>.?/\\| ";// 0123456789";
             var retstring = new string(Enumerable.Repeat(chars, length)
               .Select(s => s[random.Next(s.Length)]).ToArray());
-           // if (retstring.Length > 20)
+            // if (retstring.Length > 20)
             //
-           //     retstring = retstring.Substring(0, 20);
-           // }
+            //     retstring = retstring.Substring(0, 20);
+            // }
             return retstring;
         }
 

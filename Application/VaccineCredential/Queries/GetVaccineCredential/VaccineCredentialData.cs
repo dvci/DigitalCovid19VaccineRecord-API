@@ -1,69 +1,17 @@
-﻿using System.Collections.Generic;
+﻿using Hl7.Fhir.Model;
+using Hl7.Fhir.Serialization;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using System.Collections.Generic;
+using System;
 
 namespace Application.VaccineCredential.Queries.GetVaccineCredential
 {
-    public class Name
-    {
-        public string family { get; set; }
-        public List<string> given { get; set; }
-    }
-
-    public class Coding
-    {
-        public string system { get; set; }
-        public string code { get; set; }
-    }
-
-    public class VaccineCode
-    {
-        public List<Coding> coding { get; set; }
-    }
-
-    public class Patient
-    {
-        public string reference { get; set; }
-    }
-
-    public class Actor
-    {
-        public string display { get; set; }
-    }
-
-    public class Performer
-    {
-        public Actor actor { get; set; }
-    }
-
-    public class Resource
-    {
-        public string resourceType { get; set; }
-        public List<Name> name { get; set; }
-        public string birthDate { get; set; }
-        public string status { get; set; }
-        public VaccineCode vaccineCode { get; set; }
-        public Patient patient { get; set; }
-        public string occurrenceDateTime { get; set; }
-        public string lotNumber { get; set; }
-        public List<Performer> performer { get; set; }
-    }
-
-    public class Entry
-    {
-        public string fullUrl { get; set; }
-        public Resource resource { get; set; }
-    }
-
-    public class FhirBundle
-    {
-        public string resourceType { get; set; }
-        public string type { get; set; }
-        public List<Entry> entry { get; set; }
-    }
-
     public class CredentialSubject
     {
         public string fhirVersion { get; set; }
-        public FhirBundle fhirBundle { get; set; }
+        [JsonConverter(typeof(FhirConverter))]
+        public Bundle fhirBundle { get; set; }
     }
 
     public class Vc
@@ -82,5 +30,23 @@ namespace Application.VaccineCredential.Queries.GetVaccineCredential
     public class VerifiableCredentials
     {
         public List<string> verifiableCredential { get; set; }
+    }
+
+
+    public class FhirConverter : JsonConverter<Bundle>
+    {
+        private FhirJsonParser parser = new FhirJsonParser();
+
+        public override void WriteJson(JsonWriter writer, Bundle value, JsonSerializer serializer)
+        {
+            writer.WriteValue(value.ToJson());
+        }
+
+        public override Bundle ReadJson(JsonReader reader, Type objectType, Bundle existingValue, bool hasExistingValue, JsonSerializer serializer)
+        {
+            var jObject = JObject.Load(reader);
+            string jsonString = jObject.ToString();
+            return parser.Parse<Bundle>(jsonString);
+        }
     }
 }
